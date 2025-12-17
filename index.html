@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Loading…</title>
+  <meta name="robots" content="noindex" />
+  <script>
+    (function () {
+      // Preserve the #hash (invite payload lives here)
+      var hash = location.hash || "";
+
+      // Basic mobile detection (UA + coarse pointer)
+      var ua = navigator.userAgent || "";
+      var isMobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+      var isCoarse = false;
+      try { isCoarse = window.matchMedia("(pointer: coarse)").matches; } catch (_) {}
+
+      // You can tweak this rule later (e.g., treat iPad as desktop)
+      var isMobile = isMobileUA || isCoarse;
+
+      // Avoid redirect loops
+      var here = location.pathname.split("/").pop();
+      if (here === "mobile.html" || here === "desktop.html") return;
+
+      var target = isMobile ? "mobile.html" : "desktop.html";
+
+      // Keep querystring + hash intact
+      var qs = location.search || "";
+      location.replace(target + qs + hash);
+    })();
+  </script>
+</head>
+<body>
+  <noscript>This site requires JavaScript enabled.</noscript>
+</body>
+</html>
