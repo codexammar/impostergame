@@ -3,6 +3,9 @@
 import { mountBackground } from "../assets/bg.js";
 import { toast } from "../assets/ui.js";
 
+import { decryptJson, encryptJson } from "./crypto.js";
+import { makePeerConnection, waitForIceComplete } from "./webrtc-common.js";
+
 mountBackground();
 
 const expired = document.getElementById("expired");
@@ -17,10 +20,11 @@ const errEl = document.getElementById("err");
 const out = document.getElementById("out");
 const codeEl = document.getElementById("code");
 
-const inviteHash = (location.hash || "").slice(1);
+const inviteToken = (location.hash || "").slice(1);
 
-// Hard gate: no hash => not a real invite
-if (!inviteHash) {
+let pc = null;
+
+if (!inviteToken) {
   expired?.classList.remove("hidden");
   joinForm?.classList.add("hidden");
 }
@@ -30,10 +34,9 @@ function setErr(msg) {
   errEl.textContent = msg || "";
 }
 
-genBtn?.addEventListener("click", () => {
+genBtn?.addEventListener("click", async () => {
   setErr("");
-
-  if (!inviteHash) return;
+  if (!inviteToken) return;
 
   const pass = (passEl?.value || "").trim();
   const name = (nameEl?.value || "").trim();
@@ -41,20 +44,65 @@ genBtn?.addEventListener("click", () => {
   if (!pass) return setErr("Room password is required.");
   if (!name) return setErr("Name is required.");
 
-  // Placeholder join code for now.
-  // Next phase: decrypt invite with PBKDF2+AES-GCM, create WebRTC answer, encrypt into join code.
-  const payload = {
-    v: 1,
-    invite: inviteHash,
-    name,
-    t: Date.now()
+  let invite;
+  try {
+    invite = await decryptJson(pass, inviteToken);
+  } catch {
+    return setErr("Wrong password or corrupted invite.");
+  }
+
+  const now = Date.now();
+  if (!invite?.sessionId || !invite?.inviteId || !invite?.offer?.sdp || !invite?.createdAt || !invite?.ttlMs) {
+    return setErr("Invite payload invalid.");
+  }
+  if (now > invite.createdAt + invite.ttlMs) {
+    return setErr("Invite expired.");
+  }
+
+  // Create PC, accept host offer, generate answer
+  pc = makePeerConnection();
+
+  pc.ondatachannel = (e) => {
+    const dc = e.channel;
+    dc.onopen = () => {
+      toast("Connected.");
+      sessionStorage.setItem("imposter:role", "player");
+      // Later: game page will be driven by host messages via DC.
+      // For now, player can stay on join page or navigate manually.
+    };
+    dc.onmessage = (msg) => console.log("DC:", msg.data);
   };
 
-  const joinCode = btoa(unescape(encodeURIComponent(JSON.stringify(payload)))).replace(/=+$/g, "");
-  codeEl.value = joinCode;
+  try {
+    await pc.setRemoteDescription({ type: "offer", sdp: invite.offer.sdp });
 
-  out?.classList.remove("hidden");
-  copyBtn?.classList.remove("hidden");
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    await waitForIceComplete(pc);
+
+    const answerSdp = pc.localDescription?.sdp;
+    if (!answerSdp) return setErr("Failed to create answer.");
+
+    const joinPayload = {
+      v: 1,
+      sessionId: invite.sessionId,
+      inviteId: invite.inviteId,
+      name,
+      answer: { type: "answer", sdp: answerSdp },
+      t: now,
+    };
+
+    // Encrypt answer with same passphrase
+    const joinCode = await encryptJson(pass, joinPayload);
+
+    codeEl.value = joinCode;
+    out?.classList.remove("hidden");
+    copyBtn?.classList.remove("hidden");
+    toast("Response generated. Send it to the host.");
+  } catch (e) {
+    console.error(e);
+    setErr("Failed to generate response. Try again.");
+  }
 });
 
 copyBtn?.addEventListener("click", async () => {

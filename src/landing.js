@@ -9,22 +9,36 @@ const hostBtn = document.getElementById("hostBtn");
 const joinBtn = document.getElementById("joinBtn");
 const howBtn = document.getElementById("howBtn");
 
+function siteRootPath() {
+  // Works from:
+  // /impostergame/desktop.html
+  // /impostergame/mobile.html
+  // /impostergame/
+  // /impostergame/anything/desktop.html
+  const parts = location.pathname.split("/").filter(Boolean);
+
+  // If last segment is an .html file, drop it
+  const last = parts[parts.length - 1] || "";
+  if (last.endsWith(".html")) parts.pop();
+
+  // If last segment is "impostergame", we’re already at root folder
+  // Otherwise, keep trimming until we hit "impostergame" (repo folder)
+  while (parts.length && parts[parts.length - 1] !== "impostergame") {
+    parts.pop();
+  }
+
+  return "/" + parts.join("/") + "/";
+}
+
 hostBtn?.addEventListener("click", () => {
-  const base = location.pathname.endsWith("/")
-    ? location.pathname
-    : location.pathname + "/";
-  location.href = base + "host/";
+  location.href = siteRootPath() + "host/";
 });
 
 joinBtn?.addEventListener("click", () => {
-  // Only allow join flow if there's an invite hash
   const hash = location.hash || "";
 
   if (hash && hash.length > 1) {
-    const base = location.pathname.endsWith("/")
-      ? location.pathname
-      : location.pathname + "/";
-    location.href = base + "join/" + hash;
+    location.href = siteRootPath() + "join" + hash; // join uses #hash, not /#hash
     return;
   }
 

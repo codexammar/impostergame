@@ -1,7 +1,10 @@
 // src/host.js
 
 import { mountBackground } from "../assets/bg.js";
-import { toast } from "../assets/ui.js";
+import { toast, showModal } from "../assets/ui.js";
+
+import { encryptJson, decryptJson, randomB64Url } from "./crypto.js";
+import { makePeerConnection, waitForIceComplete } from "./webrtc-common.js";
 
 mountBackground();
 
@@ -24,15 +27,26 @@ const pasteErrEl = document.getElementById("pasteErr");
 
 const playersEl = document.getElementById("players");
 
+function setErr(msg) { if (errEl) errEl.textContent = msg || ""; }
+function setPasteErr(msg) { if (pasteErrEl) pasteErrEl.textContent = msg || ""; }
+function hide(el) { el?.classList.add("hidden"); }
+function show(el) { el?.classList.remove("hidden"); }
+
+function basePath() {
+  // /impostergame/host/desktop.html -> /impostergame/
+  return location.pathname.replace(/\/host\/(desktop\.html|mobile\.html)$/, "/");
+}
+
 function roomForStorage(r) {
   return {
     sessionId: r.sessionId,
     createdAt: r.createdAt,
     max: r.max,
-    inviteToken: r.inviteToken,
+    ttlMs: r.ttlMs,
     players: r.players,
     usedJoinCodes: [...r.usedJoinCodes],
     connectedNames: [...r.connectedNames],
+    // We intentionally do NOT store pending RTCPeerConnections in sessionStorage.
   };
 }
 
@@ -41,35 +55,12 @@ function persistRoom() {
   sessionStorage.setItem("imposter:session", JSON.stringify(roomForStorage(room)));
 }
 
-// Ephemeral session state (dies when tab closes)
+// Ephemeral runtime state
 let room = null;
 
-function setErr(msg) { if (errEl) errEl.textContent = msg || ""; }
-function setPasteErr(msg) { if (pasteErrEl) pasteErrEl.textContent = msg || ""; }
-
-function hide(el) { el?.classList.add("hidden"); }
-function show(el) { el?.classList.remove("hidden"); }
-
-function basePath() {
-  // /impostergame/host/desktop.html -> /impostergame/
-  const p = location.pathname;
-  return p.replace(/\/host\/(desktop\.html|mobile\.html)$/, "/");
-}
-
-function b64urlEncodeString(s) {
-  const bytes = new TextEncoder().encode(s);
-  let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-function b64urlDecodeToString(s) {
-  const pad = s.length % 4 ? "=".repeat(4 - (s.length % 4)) : "";
-  const fixed = (s + pad).replace(/-/g, "+").replace(/_/g, "/");
-  const bin = atob(fixed);
-  const bytes = new Uint8Array([...bin].map(c => c.charCodeAt(0)));
-  return new TextDecoder().decode(bytes);
-}
+// Pending invites that host generated but haven’t been answered yet.
+// inviteId -> { pc, dc, createdAt, used:false }
+const pending = new Map();
 
 function renderPlayers() {
   if (!playersEl) return;
@@ -78,13 +69,15 @@ function renderPlayers() {
 
   for (const p of room.players) {
     const li = document.createElement("li");
-    li.textContent = `${p.name} — ${p.status}`;
+    li.textContent = p.status ? `${p.name} — ${p.status}` : p.name;
     playersEl.appendChild(li);
   }
 }
 
 function endSession() {
   room = null;
+  pending.clear();
+
   setErr("");
   setPasteErr("");
   hide(inviteBlock);
@@ -96,6 +89,7 @@ function endSession() {
   hide(resetBtn);
 
   renderPlayers();
+
   sessionStorage.removeItem("imposter:session");
   sessionStorage.removeItem("imposter:role");
   toast("Session ended.");
@@ -111,14 +105,11 @@ createBtn?.addEventListener("click", () => {
   if (!pass) return setErr("Room passphrase is required.");
   if (!Number.isFinite(max) || max < 1 || max > 15) return setErr("Max room size must be between 1 and 15.");
 
-  // Create ephemeral room
   room = {
     sessionId: crypto.randomUUID(),
     createdAt: Date.now(),
+    ttlMs: 30 * 60 * 1000, // 30 minutes
     max,
-    // This “inviteToken” is a placeholder for the future encrypted invite payload.
-    // For now, it lets us enforce “different/expired session” checks.
-    inviteToken: b64urlEncodeString(JSON.stringify({ v: 1, sid: crypto.randomUUID(), t: Date.now(), max })),
     usedJoinCodes: new Set(),
     connectedNames: new Set(),
     players: []
@@ -128,25 +119,64 @@ createBtn?.addEventListener("click", () => {
   show(resetBtn);
   hide(inviteBlock);
   hide(copyInviteBtn);
-  hide(addBtn);
+  show(addBtn);
 
   renderPlayers();
   persistRoom();
   sessionStorage.setItem("imposter:role", "host");
-  toast("Room created. Now generate an invite.");
+  toast("Room created. Generate an invite for each player.");
 });
 
-inviteBtn?.addEventListener("click", () => {
+inviteBtn?.addEventListener("click", async () => {
   setErr("");
   if (!room) return setErr("Create a room first.");
 
   const pass = (passEl?.value || "").trim();
   if (!pass) return setErr("Room passphrase is required.");
 
-  // Join URL format must match your spec exactly:
-  // <SITE>/impostergame/join#<ENCRYPTED_INVITE>
+  if (room.players.length >= room.max) {
+    return setErr("Room is full.");
+  }
+
+  // Create a fresh per-player invite: PC + DC + Offer
+  const inviteId = randomB64Url(10);
+  const pc = makePeerConnection();
+
+  // Host creates DataChannel (since host is offerer)
+  const dc = pc.createDataChannel("game", { ordered: true });
+
+  dc.onopen = () => {
+    toast("A player connected.");
+  };
+
+  dc.onmessage = (msg) => {
+    // Later: gameplay messages (endTurn, etc.)
+    console.log("DC msg:", msg.data);
+  };
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await waitForIceComplete(pc);
+
+  const offerSdp = pc.localDescription?.sdp;
+  if (!offerSdp) return setErr("Failed to create offer.");
+
+  pending.set(inviteId, { pc, dc, createdAt: Date.now(), used: false });
+
+  const invitePayload = {
+    v: 1,
+    sessionId: room.sessionId,
+    inviteId,
+    createdAt: Date.now(),
+    ttlMs: 10 * 60 * 1000, // 10 min per invite link
+    max: room.max,
+    offer: { type: "offer", sdp: offerSdp },
+  };
+
+  const inviteToken = await encryptJson(pass, invitePayload);
+
   const site = location.origin + basePath(); // ends with /impostergame/
-  const joinUrl = `${site}join#${room.inviteToken}`;
+  const joinUrl = `${site}join#${inviteToken}`;
 
   const msg =
 `Here’s your room password: ${pass}
@@ -156,10 +186,8 @@ Here’s your link: ${joinUrl}
   inviteMsgEl.value = msg;
   show(inviteBlock);
   show(copyInviteBtn);
-  show(addBtn);
 
-  persistRoom();
-  toast("Invite generated.");
+  toast("Invite generated (single-use). Send it to one player.");
 });
 
 copyInviteBtn?.addEventListener("click", async () => {
@@ -168,11 +196,9 @@ copyInviteBtn?.addEventListener("click", async () => {
   toast("Invite message copied.");
 });
 
-resetBtn?.addEventListener("click", () => {
-  endSession();
-});
+resetBtn?.addEventListener("click", endSession);
 
-addBtn?.addEventListener("click", () => {
+addBtn?.addEventListener("click", async () => {
   setPasteErr("");
   if (!room) return setPasteErr("Create a room first.");
   if (room.players.length >= room.max) return setPasteErr("Room is full.");
@@ -180,51 +206,70 @@ addBtn?.addEventListener("click", () => {
   const raw = (joinPasteEl?.value || "").trim();
   if (!raw) return setPasteErr("Paste a join code.");
 
-  // 1) Reject join code already used
   if (room.usedJoinCodes.has(raw)) return setPasteErr("Join code already used.");
 
-  // Decode join code (placeholder format).
-  // Current join page creates: base64(JSON({v, invite, name, t}))
+  const pass = (passEl?.value || "").trim();
+  if (!pass) return setPasteErr("Room passphrase is required.");
+
   let payload;
   try {
-    const json = b64urlDecodeToString(raw);
-    payload = JSON.parse(json);
+    payload = await decryptJson(pass, raw);
   } catch {
-    // Some base64 variants will fail; try normal base64 as fallback
-    try {
-      const json = decodeURIComponent(escape(atob(raw)));
-      payload = JSON.parse(json);
-    } catch {
-      return setPasteErr("Invalid join code format.");
-    }
+    return setPasteErr("Invalid join code (wrong password or corrupted).");
   }
 
-  // 2) Expired/different session check (placeholder)
-  // Real implementation will decrypt and validate sessionId + ttl using AES-GCM + PBKDF2.
-  if (!payload || payload.invite !== room.inviteToken) {
+  if (!payload || payload.sessionId !== room.sessionId) {
     return setPasteErr("Join code is from an expired or different session.");
   }
 
+  const inviteId = String(payload.inviteId || "").trim();
+  if (!inviteId) return setPasteErr("Join code missing invite id.");
+
+  const pendingInvite = pending.get(inviteId);
+  if (!pendingInvite) return setPasteErr("That invite is unknown/expired. Generate a new invite.");
+  if (pendingInvite.used) return setPasteErr("That invite was already used. Generate a new invite.");
+
   const name = String(payload.name || "").trim();
   if (!name) return setPasteErr("Join code missing player name.");
+  if (room.connectedNames.has(name)) return setPasteErr("Join code is from a player already connected.");
 
-  // 3) Join code from player already connected
-  if (room.connectedNames.has(name)) {
-    return setPasteErr("Join code is from a player already connected.");
-  }
+  const ans = payload.answer;
+  if (!ans?.sdp) return setPasteErr("Join code missing answer SDP.");
 
-  // 4) Room full
-  if (room.players.length >= room.max) {
-    return setPasteErr("Room is full.");
-  }
-
-  // Accept
+  // Mark used so it can't be replayed
+  pendingInvite.used = true;
   room.usedJoinCodes.add(raw);
   room.connectedNames.add(name);
-  room.players.push({ name, status: "queued (WebRTC not wired yet)" });
 
-  joinPasteEl.value = "";
+  // Add player as "connecting"; DC onopen will flip to connected soon
+  room.players.push({ name, status: "connecting..." });
   renderPlayers();
   persistRoom();
-  toast(`Added ${name}.`);
+
+  try {
+    await pendingInvite.pc.setRemoteDescription({ type: "answer", sdp: ans.sdp });
+
+    // When DC is open, set status to connected
+    pendingInvite.dc.onopen = () => {
+      const p = room.players.find(x => x.name === name);
+      if (p) p.status = "connected";
+      renderPlayers();
+      persistRoom();
+      toast(`${name} connected.`);
+    };
+
+    // Store DC reference for gameplay later
+    // For now we just keep it on the pending entry.
+    pendingInvite.name = name;
+
+    joinPasteEl.value = "";
+    toast(`Accepted ${name}. Waiting for channel…`);
+  } catch (e) {
+    console.error(e);
+    const p = room.players.find(x => x.name === name);
+    if (p) p.status = "failed";
+    renderPlayers();
+    persistRoom();
+    setPasteErr("Failed to apply answer. Ask player to regenerate with a fresh invite.");
+  }
 });

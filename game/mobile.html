@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Game • Imposter Game</title>
+  <link rel="stylesheet" href="../assets/app.css" />
+  <link rel="stylesheet" href="../assets/bg.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel center-ish">
+      <h1 class="title">Imposter Game</h1>
+      <p id="gameInfo" class="note">Loading…</p>
+
+      <h2 style="margin:10px 0 8px; font-size:1.05rem;">Players</h2>
+      <ul id="roster" style="margin:0; padding-left:18px;"></ul>
+
+      <div id="hostControls" style="margin-top:14px;">
+        <h3 style="margin:0 0 8px;">Host Controls</h3>
+        <div class="actions" style="justify-content:flex-start;">
+          <button id="kickBtn" class="btn">Kick</button>
+          <button id="skipBtn" class="btn">Skip</button>
+          <button id="superMuteBtn" class="btn">Supermute</button>
+        </div>
+      </div>
+
+      <div id="playerControls" style="margin-top:14px;">
+        <h3 style="margin:0 0 8px;">Controls</h3>
+        <div class="actions" style="justify-content:flex-start;">
+          <button id="voteStartBtn" class="btn">Vote</button>
+          <button id="voteSkipBtn" class="btn">Skip Vote</button>
+          <button id="muteForMeBtn" class="btn">Mute</button>
+        </div>
+      </div>
+
+      <h2 style="margin:14px 0 8px; font-size:1.05rem;">Chat</h2>
+      <div id="chatLog" style="
+        height: 260px;
+        overflow:auto;
+        border: 1px solid rgba(255,255,255,0.14);
+        border-radius: 14px;
+        padding: 10px;
+        background: rgba(10, 12, 18, 0.35);
+      "></div>
+
+      <div style="display:flex; gap:10px; margin-top:10px;">
+        <input id="chatInput" type="text" placeholder="Message…" style="flex:1;" />
+        <button id="sendBtn" class="btn" style="min-width:96px;">Send</button>
+      </div>
+
+      <div class="actions" style="margin-top:14px;">
+        <button id="backToLobbyBtn" class="btn">Lobby</button>
+        <button id="endSessionBtn" class="btn">End</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="../src/game.js"></script>
+</body>
+</html>
