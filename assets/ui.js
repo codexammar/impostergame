@@ -1,6 +1,8 @@
 // assets/ui.js
 
 export function showModal({ title, html }) {
+  document.body.classList.add("modal-open");
+
   const backdrop = document.createElement("div");
   backdrop.className = "modal-backdrop";
   backdrop.innerHTML = `
@@ -13,13 +15,16 @@ export function showModal({ title, html }) {
     </div>
   `;
 
+  function close() {
+    document.body.classList.remove("modal-open");
+    backdrop.remove();
+  }
+
   backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) backdrop.remove();
+    if (e.target === backdrop) close();
   });
 
-  backdrop.querySelector("[data-close]").addEventListener("click", () => {
-    backdrop.remove();
-  });
+  backdrop.querySelector("[data-close]").addEventListener("click", close);
 
   document.body.appendChild(backdrop);
   return backdrop;

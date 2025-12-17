@@ -27,10 +27,9 @@ body {
 .panel {
   width: min(920px, 92vw);
   padding: 28px 24px;
-  background: var(--panel);
+  background: rgba(14, 18, 26, 0.80); /* slightly more opaque */
   border: 1px solid var(--panel-border);
   border-radius: 18px;
-  backdrop-filter: blur(10px);
   box-shadow: 0 18px 60px rgba(0,0,0,0.45);
 }
 
@@ -103,46 +102,42 @@ body {
   font-size: 0.95rem;
 }
 
-/* Modal (fade-in + blur background) */
+/* When modal is open, blur specific layers (cheap) */
+body.modal-open .panel {
+  filter: blur(8px);
+  transform: translateY(-4vh) scale(0.995);
+  transition: filter 140ms ease, transform 140ms ease;
+}
+
+body.modal-open .bg {
+  filter: blur(6px);
+  transition: filter 140ms ease;
+}
+
+/* Modal (fade-in, no backdrop-filter) */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.45);
+  background: rgba(0,0,0,0.55);
   display: grid;
   place-items: center;
   padding: 18px;
-
   opacity: 0;
-  animation: modal-fade-in 160ms ease forwards;
-}
-
-.modal-backdrop::before {
-  /* blur what's behind */
-  content: "";
-  position: absolute;
-  inset: 0;
-  backdrop-filter: blur(10px);
+  animation: modal-fade-in 140ms ease forwards;
 }
 
 .modal {
-  position: relative;
   width: min(720px, 92vw);
-  background: rgba(12, 16, 24, 0.92);
+  background: rgba(12, 16, 24, 0.96);
   border: 1px solid rgba(255,255,255,0.14);
   border-radius: 18px;
   padding: 18px 18px 14px;
   box-shadow: 0 20px 70px rgba(0,0,0,0.55);
-  backdrop-filter: blur(10px);
 
-  transform: translateY(8px);
+  transform: translateY(10px);
   opacity: 0;
-  animation: modal-rise-in 180ms ease forwards;
+  animation: modal-rise-in 160ms ease forwards;
 }
 
-@keyframes modal-fade-in {
-  to { opacity: 1; }
-}
-
-@keyframes modal-rise-in {
-  to { transform: translateY(0); opacity: 1; }
-}
+@keyframes modal-fade-in { to { opacity: 1; } }
+@keyframes modal-rise-in { to { transform: translateY(0); opacity: 1; } }
