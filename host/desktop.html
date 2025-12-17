@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Host • Imposter Game</title>
+  <link rel="stylesheet" href="../assets/app.css" />
+  <link rel="stylesheet" href="../assets/bg.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel center-ish">
+      <h1 class="title">Host Lobby</h1>
+      <p class="note">You are the authority. When your tab closes, the session ends.</p>
+
+      <div style="margin-top:16px;">
+        <label for="pass" style="display:block; color: var(--muted); margin-bottom:6px;">Room passphrase</label>
+        <input id="pass" type="password" autocomplete="off" placeholder="Required" />
+      </div>
+
+      <div style="margin-top:14px;">
+        <label for="max" style="display:block; color: var(--muted); margin-bottom:6px;">Max room size (1–15)</label>
+        <input id="max" type="number" min="1" max="15" value="10" />
+      </div>
+
+      <div class="actions" style="margin-top:14px;">
+        <button id="createBtn" class="btn">Create Room</button>
+        <button id="inviteBtn" class="btn hidden">Generate Invite</button>
+        <button id="copyInviteBtn" class="btn hidden">Copy Invite Message</button>
+      </div>
+
+      <div id="err" class="note" style="color:#ff9aa2; text-align:center; margin-top:10px;"></div>
+
+      <div id="inviteBlock" class="hidden" style="margin-top:14px;">
+        <p class="note">Share this exact message with players:</p>
+        <textarea id="inviteMsg" rows="5" readonly></textarea>
+      </div>
+
+      <hr style="margin:20px 0; border:0; border-top:1px solid rgba(255,255,255,0.12);" />
+
+      <h2 style="margin:0; font-size:1.15rem; letter-spacing:.02em;">Add Participants</h2>
+      <p class="note" style="text-align:left;">
+        Paste join codes one at a time. Players connect in paste order. No pre-allocated slots.
+      </p>
+
+      <textarea id="joinPaste" rows="4" placeholder="Paste join code here..."></textarea>
+
+      <div class="actions" style="margin-top:12px;">
+        <button id="addBtn" class="btn hidden">Add Player</button>
+        <button id="resetBtn" class="btn hidden">End Session</button>
+      </div>
+
+      <div id="pasteErr" class="note" style="color:#ff9aa2; text-align:left; margin-top:10px;"></div>
+
+      <div style="margin-top:14px;">
+        <h3 style="margin:0 0 8px;">Players</h3>
+        <ul id="players" style="margin:0; padding-left:18px;"></ul>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="../src/host.js"></script>
+</body>
+</html>

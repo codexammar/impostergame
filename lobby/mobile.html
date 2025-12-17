@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Lobby • Imposter Game</title>
+  <link rel="stylesheet" href="../assets/app.css" />
+  <link rel="stylesheet" href="../assets/bg.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel center-ish">
+      <h1 class="title">Lobby</h1>
+      <p id="lobbyInfo" class="note">Loading…</p>
+
+      <textarea id="joinPaste" rows="4" placeholder="Paste join code..."></textarea>
+
+      <div class="actions" style="margin-top:10px;">
+        <button id="addBtn" class="btn">Add</button>
+      </div>
+
+      <div id="pasteErr" class="note" style="color:#ff9aa2; margin-top:8px;"></div>
+
+      <ul id="players" style="margin:14px 0 0; padding-left:18px;"></ul>
+
+      <div class="actions" style="margin-top:14px;">
+        <button id="startGameBtn" class="btn">Start</button>
+        <button id="endSessionBtn" class="btn">End</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="../src/lobby.js"></script>
+</body>
+</html>

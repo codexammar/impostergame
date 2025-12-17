@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Host • Imposter Game</title>
+  <link rel="stylesheet" href="../assets/app.css" />
+  <link rel="stylesheet" href="../assets/bg.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel center-ish">
+      <h1 class="title">Host</h1>
+      <p class="note">Host tab closes → session ends.</p>
+
+      <div style="margin-top:12px;">
+        <label for="pass" style="display:block; color: var(--muted); margin-bottom:6px;">Passphrase</label>
+        <input id="pass" type="password" autocomplete="off" placeholder="Required" />
+      </div>
+
+      <div style="margin-top:12px;">
+        <label for="max" style="display:block; color: var(--muted); margin-bottom:6px;">Max size</label>
+        <input id="max" type="number" min="1" max="15" value="10" />
+      </div>
+
+      <div class="actions" style="margin-top:12px;">
+        <button id="createBtn" class="btn">Create</button>
+        <button id="inviteBtn" class="btn hidden">Invite</button>
+        <button id="copyInviteBtn" class="btn hidden">Copy</button>
+      </div>
+
+      <div id="err" class="note" style="color:#ff9aa2; text-align:center; margin-top:10px;"></div>
+
+      <div id="inviteBlock" class="hidden" style="margin-top:12px;">
+        <textarea id="inviteMsg" rows="6" readonly></textarea>
+      </div>
+
+      <hr style="margin:18px 0; border:0; border-top:1px solid rgba(255,255,255,0.12);" />
+
+      <h2 style="margin:0; font-size:1.05rem;">Add Players</h2>
+      <textarea id="joinPaste" rows="4" placeholder="Paste join code..."></textarea>
+
+      <div class="actions" style="margin-top:10px;">
+        <button id="addBtn" class="btn hidden">Add</button>
+        <button id="resetBtn" class="btn hidden">End</button>
+      </div>
+
+      <div id="pasteErr" class="note" style="color:#ff9aa2; text-align:left; margin-top:10px;"></div>
+
+      <ul id="players" style="margin:12px 0 0; padding-left:18px;"></ul>
+    </div>
+  </div>
+
+  <script type="module" src="../src/host.js"></script>
+</body>
+</html>

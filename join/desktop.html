@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Join • Imposter Game</title>
+  <link rel="stylesheet" href="../assets/app.css" />
+  <link rel="stylesheet" href="../assets/bg.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel center-ish">
+      <h1 class="title">Join Game</h1>
+
+      <div id="expired" class="hidden">
+        <p class="blurb"><strong>Invite expired.</strong> Ask the host for a fresh link.</p>
+      </div>
+
+      <div id="joinForm">
+        <p class="note">Enter the room password and your in-game name.</p>
+
+        <div style="margin-top:14px;">
+          <label for="pass" style="display:block; color: var(--muted); margin-bottom:6px;">Room password</label>
+          <input id="pass" type="password" autocomplete="off" />
+        </div>
+
+        <div style="margin-top:14px;">
+          <label for="name" style="display:block; color: var(--muted); margin-bottom:6px;">Your name</label>
+          <input id="name" type="text" maxlength="20" placeholder="e.g., Sir" />
+        </div>
+
+        <div class="actions" style="margin-top:16px;">
+          <button id="genBtn" class="btn">Generate Join Code</button>
+          <button id="copyBtn" class="btn hidden">Copy Join Code</button>
+        </div>
+
+        <div id="err" class="note" style="color: #ff9aa2; text-align:center; margin-top:10px;"></div>
+
+        <div id="out" class="hidden" style="margin-top:14px;">
+          <p class="note">Send this join code to the host:</p>
+          <textarea id="code" rows="6" readonly style="margin-top:10px;"></textarea>
+          <p id="waiting" class="note" style="margin-top:10px;">Waiting for host to connect…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="../src/join.js"></script>
+</body>
+</html>

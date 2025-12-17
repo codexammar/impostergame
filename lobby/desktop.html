@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Lobby • Imposter Game</title>
+  <link rel="stylesheet" href="../assets/app.css" />
+  <link rel="stylesheet" href="../assets/bg.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel center-ish">
+      <h1 class="title">Lobby</h1>
+      <p id="lobbyInfo" class="note">Loading lobby…</p>
+
+      <hr style="margin:18px 0; border:0; border-top:1px solid rgba(255,255,255,0.12);" />
+
+      <h2 style="margin:0; font-size:1.15rem;">Add Participants</h2>
+      <p class="note" style="text-align:left;">
+        Paste join codes one at a time. Players connect in paste order.
+      </p>
+
+      <textarea id="joinPaste" rows="4" placeholder="Paste join code here..."></textarea>
+
+      <div class="actions" style="margin-top:12px;">
+        <button id="addBtn" class="btn">Add Player</button>
+      </div>
+
+      <div id="pasteErr" class="note" style="color:#ff9aa2; text-align:left; margin-top:10px;"></div>
+
+      <div style="margin-top:16px;">
+        <h3 style="margin:0 0 8px;">Players</h3>
+        <ul id="players" style="margin:0; padding-left:18px;"></ul>
+      </div>
+
+      <hr style="margin:18px 0; border:0; border-top:1px solid rgba(255,255,255,0.12);" />
+
+      <div class="actions">
+        <button id="startGameBtn" class="btn">Start Game</button>
+        <button id="endSessionBtn" class="btn">End Session</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="../src/lobby.js"></script>
+</body>
+</html>
