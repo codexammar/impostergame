@@ -103,17 +103,29 @@ body {
   font-size: 0.95rem;
 }
 
-/* Modal */
+/* Modal (fade-in + blur background) */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.58);
+  background: rgba(0,0,0,0.45);
   display: grid;
   place-items: center;
   padding: 18px;
+
+  opacity: 0;
+  animation: modal-fade-in 160ms ease forwards;
+}
+
+.modal-backdrop::before {
+  /* blur what's behind */
+  content: "";
+  position: absolute;
+  inset: 0;
+  backdrop-filter: blur(10px);
 }
 
 .modal {
+  position: relative;
   width: min(720px, 92vw);
   background: rgba(12, 16, 24, 0.92);
   border: 1px solid rgba(255,255,255,0.14);
@@ -121,15 +133,16 @@ body {
   padding: 18px 18px 14px;
   box-shadow: 0 20px 70px rgba(0,0,0,0.55);
   backdrop-filter: blur(10px);
+
+  transform: translateY(8px);
+  opacity: 0;
+  animation: modal-rise-in 180ms ease forwards;
 }
 
-.modal h2 { margin: 6px 0 10px; }
-.modal p, .modal li { color: var(--muted); line-height: 1.55; }
-.modal .row {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 14px;
+@keyframes modal-fade-in {
+  to { opacity: 1; }
 }
 
-.hidden { display: none !important; }
+@keyframes modal-rise-in {
+  to { transform: translateY(0); opacity: 1; }
+}

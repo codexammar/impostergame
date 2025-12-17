@@ -5,23 +5,29 @@ import { showModal, toast } from "../assets/ui.js";
 
 mountBackground();
 
+const hostBtn = document.getElementById("hostBtn");
 const joinBtn = document.getElementById("joinBtn");
 const howBtn = document.getElementById("howBtn");
 
+hostBtn?.addEventListener("click", () => {
+  const base = location.pathname.endsWith("/")
+    ? location.pathname
+    : location.pathname + "/";
+  location.href = base + "host/";
+});
+
 joinBtn?.addEventListener("click", () => {
-  // If user somehow has an invite hash on the base page, forward it to /join/
+  // Only allow join flow if there's an invite hash
   const hash = location.hash || "";
 
   if (hash && hash.length > 1) {
     const base = location.pathname.endsWith("/")
       ? location.pathname
       : location.pathname + "/";
-    // base should be /impostergame/ on pages
     location.href = base + "join/" + hash;
     return;
   }
 
-  // Otherwise, do NOT take them to join UI. This respects your rule.
   toast("Joining requires a host invite link.");
   showModal({
     title: "How to join",
@@ -49,7 +55,7 @@ howBtn?.addEventListener("click", () => {
         <li><strong>Players:</strong> open invite link, enter name, generate join code, send it back.</li>
         <li><strong>No servers:</strong> everything happens in the browser via WebRTC data channels.</li>
       </ul>
-      <p>When the host tab closes, the session ends — and old links become useless.</p>
+      <p>When the host tab closes, the session ends — and old links become invalid.</p>
     `
   });
 });
