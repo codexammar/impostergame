@@ -4,21 +4,31 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Imposter Game</title>
+  <link rel="stylesheet" href="./assets/app.css" />
+  <link rel="stylesheet" href="./assets/bg.css" />
 </head>
 <body>
-  <main style="padding: 18px; font-family: system-ui, Arial, sans-serif;">
-    <h1>Imposter Game (Mobile)</h1>
-    <p>Welcome / How to play / Create session goes here (mobile layout).</p>
+  <div class="wrap">
+    <div class="panel center-ish">
+      <h1 class="title">Imposter Game</h1>
 
-    <p><a href="./host/">Go to Host Lobby</a></p>
+      <div class="actions">
+        <button id="joinBtn" class="btn">Join</button>
+        <button id="howBtn" class="btn">How to Play</button>
+      </div>
 
-    <hr />
-    <small>Path: <code id="path"></code><br/>Hash: <code id="hash"></code></small>
-  </main>
+      <p class="blurb">
+        Joining requires a host invite link. Open the link, enter your name,
+        generate your response string, then send it back to the host.
+        The host pastes it to connect you.
+      </p>
 
-  <script>
-    document.getElementById("path").textContent = location.pathname;
-    document.getElementById("hash").textContent = location.hash || "(none)";
-  </script>
+      <p class="note">
+        If you don’t have a host link yet, ask the host for it.
+      </p>
+    </div>
+  </div>
+
+  <script type="module" src="./src/landing.js"></script>
 </body>
 </html>

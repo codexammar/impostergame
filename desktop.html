@@ -4,21 +4,32 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Imposter Game</title>
+  <link rel="stylesheet" href="./assets/app.css" />
+  <link rel="stylesheet" href="./assets/bg.css" />
 </head>
 <body>
-  <main style="max-width: 900px; margin: 40px auto; font-family: system-ui, Arial, sans-serif;">
-    <h1>Imposter Game (Desktop)</h1>
-    <p>Welcome / How to play / Create session goes here.</p>
+  <div class="wrap">
+    <div class="panel center-ish">
+      <h1 class="title">Imposter Game</h1>
 
-    <p><a href="./host/">Go to Host Lobby</a></p>
+      <div class="actions">
+        <button id="joinBtn" class="btn">Join</button>
+        <button id="howBtn" class="btn">How to Play</button>
+      </div>
 
-    <hr />
-    <small>Path: <code id="path"></code> &nbsp; Hash: <code id="hash"></code></small>
-  </main>
+      <p class="blurb">
+        To join a session, the host must send you a link after creating the room.
+        Open the host’s link, enter your in-game name, then send the generated response string
+        back to the host via any chat app (Discord, Slack, iMessage — whatever survives).
+        The host pastes it on their side to establish the connection.
+      </p>
 
-  <script>
-    document.getElementById("path").textContent = location.pathname;
-    document.getElementById("hash").textContent = location.hash || "(none)";
-  </script>
+      <p class="note">
+        Hosting starts from the Host Lobby. Joining only works from a host invite link.
+      </p>
+    </div>
+  </div>
+
+  <script type="module" src="./src/landing.js"></script>
 </body>
 </html>
