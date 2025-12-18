@@ -10,10 +10,14 @@ import { swapPanelFrom } from "./view-swap.js";
 
 mountBackground();
 
-const expired = document.getElementById("expired");
-const joinForm = document.getElementById("joinForm");
+function initJoin() {
+  const joinForm = document.getElementById("joinForm");
+  if (!joinForm) return; // OK: inside function
 
-if (!joinForm) return;
+  // prevent double-binding
+  if (joinForm.dataset.bound === "1") return;
+  joinForm.dataset.bound = "1";
+const expired = document.getElementById("expired");
 
 const passEl = document.getElementById("pass");
 const nameEl = document.getElementById("name");
@@ -228,3 +232,6 @@ endSessionBtn?.addEventListener("click", () => {
     }
   }
 }
+}
+initJoin();
+window.addEventListener("imposter:panelSwap", initJoin);

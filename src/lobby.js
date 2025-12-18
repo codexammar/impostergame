@@ -9,10 +9,13 @@ import { compressStringToB64u, decompressStringFromB64u } from "./codec.js";
 import { swapPanelFrom } from "./view-swap.js";
 
 mountBackground();
+function initLobby() {
+  const lobbyInfoEl = document.getElementById("lobbyInfo");
+  if (!lobbyInfoEl) return; // OK: inside function
 
-// Existing lobby UI
-const lobbyInfoEl = document.getElementById("lobbyInfo");
-if (!lobbyInfoEl) return;
+  // prevent double-binding
+  if (lobbyInfoEl.dataset.bound === "1") return;
+  lobbyInfoEl.dataset.bound = "1";
 const joinPasteEl = document.getElementById("joinPaste");
 const addBtn = document.getElementById("addBtn");
 const pasteErrEl = document.getElementById("pasteErr");
@@ -597,6 +600,7 @@ startGameBtn?.addEventListener("click", () => {
       const gameFile = isMobileUA ? "../game/mobile.html" : "../game/desktop.html";
       await swapPanelFrom(gameFile);
         await new Promise(r => setTimeout(r, 0));
+        initHostGameUI();
     } catch (e) {
       console.error(e);
       toast("Failed to load game UI.");
@@ -690,3 +694,7 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
+}
+
+initLobby();
+window.addEventListener("imposter:panelSwap", initLobby);
