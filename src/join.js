@@ -5,6 +5,7 @@ import { toast } from "../assets/ui.js";
 
 import { decryptJson, encryptJson } from "./crypto.js";
 import { makePeerConnection, waitForIceComplete } from "./webrtc-common.js";
+import { compressStringToB64u, decompressStringFromB64u } from "./codec.js";
 
 mountBackground();
 
@@ -19,6 +20,7 @@ const copyBtn = document.getElementById("copyBtn");
 const errEl = document.getElementById("err");
 const out = document.getElementById("out");
 const codeEl = document.getElementById("code");
+const waitingEl = document.getElementById("waiting");
 
 const inviteToken = (location.hash || "").slice(1);
 
@@ -52,9 +54,18 @@ genBtn?.addEventListener("click", async () => {
   }
 
   const now = Date.now();
-  if (!invite?.sessionId || !invite?.inviteId || !invite?.offer?.sdp || !invite?.createdAt || !invite?.ttlMs) {
+
+  // IMPORTANT: lobby now sends offer.sdpPacked (not offer.sdp)
+  if (
+    !invite?.sessionId ||
+    !invite?.inviteId ||
+    !invite?.offer?.sdpPacked ||
+    !invite?.createdAt ||
+    !invite?.ttlMs
+  ) {
     return setErr("Invite payload invalid.");
   }
+
   if (now > invite.createdAt + invite.ttlMs) {
     return setErr("Invite expired.");
   }
@@ -63,16 +74,31 @@ genBtn?.addEventListener("click", async () => {
 
   pc.ondatachannel = (e) => {
     const dc = e.channel;
+
     dc.onopen = () => {
-      toast("Connected to host.");
+      // Channel open may happen before host sends its confirmation message.
+      toast("Handshake complete. Waiting for host…");
+      if (waitingEl) waitingEl.textContent = "Handshake complete. Waiting for host…";
       sessionStorage.setItem("imposter:role", "player");
-      // When we wire gameplay, host will drive navigation/state.
     };
-    dc.onmessage = (msg) => console.log("DC:", msg.data);
+
+    dc.onmessage = (msg) => {
+      // Host sends {"type":"connected"} immediately on open.
+      try {
+        const data = JSON.parse(msg.data);
+        if (data?.type === "connected") {
+          toast("Connected! You’re in.");
+          if (waitingEl) waitingEl.textContent = "Connected. Waiting for host to start…";
+        }
+      } catch {
+        // ignore non-json for now
+      }
+    };
   };
 
   try {
-    await pc.setRemoteDescription({ type: "offer", sdp: invite.offer.sdp });
+    const offerSdp = await decompressStringFromB64u(invite.offer.sdpPacked);
+    await pc.setRemoteDescription({ type: "offer", sdp: offerSdp });
 
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
@@ -81,12 +107,14 @@ genBtn?.addEventListener("click", async () => {
     const answerSdp = pc.localDescription?.sdp;
     if (!answerSdp) return setErr("Failed to create answer.");
 
+    const answerPacked = await compressStringToB64u(answerSdp);
+
     const joinPayload = {
       v: 1,
       sessionId: invite.sessionId,
       inviteId: invite.inviteId,
       name,
-      answer: { type: "answer", sdp: answerSdp },
+      answer: { type: "answer", sdpPacked: answerPacked },
       t: now,
     };
 
@@ -95,6 +123,8 @@ genBtn?.addEventListener("click", async () => {
     codeEl.value = joinCode;
     out?.classList.remove("hidden");
     copyBtn?.classList.remove("hidden");
+
+    if (waitingEl) waitingEl.textContent = "Waiting for host to connect…";
     toast("Response generated. Send it to the host.");
   } catch (e) {
     console.error(e);
