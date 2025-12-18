@@ -90,6 +90,46 @@ function basePath() {
 
 // Pending invites must live in memory in THIS TAB.
 const pending = new Map(); // inviteId -> { pc, dc, used, createdAt, name? }
+
+// Host-only, in-memory game state (DO NOT store in room/sessionStorage)
+let gameState = null; 
+// { realWord, imposterWord, imposterName, assignments: Map(name -> {word, imposter}) }
+
+function toPublicSession() {
+  // anything here is safe to share with everyone
+  return {
+    sessionId: room.sessionId,
+    createdAt: room.createdAt,
+    max: room.max,
+    players: room.players,
+    started: true,
+  };
+}
+
+function sendToEntry(entry, obj) {
+  try {
+    if (entry?.dc?.readyState === "open") entry.dc.send(JSON.stringify(obj));
+  } catch {}
+}
+
+function sendStartToEntry(entry) {
+  sendToEntry(entry, { type: "start", session: toPublicSession() });
+}
+
+function sendAssignToEntry(entry, playerName) {
+  if (!gameState) return;
+
+  const a = gameState.assignments.get(playerName);
+  if (!a) return;
+
+  // Everyone gets word. Only imposter gets the extra flag.
+  const msg = a.imposter
+    ? { type: "assign", word: a.word, imposter: 1 }
+    : { type: "assign", word: a.word };
+
+  sendToEntry(entry, msg);
+}
+
 function broadcast(obj) {
   const msg = JSON.stringify(obj);
   for (const entry of pending.values()) {
@@ -302,30 +342,58 @@ startGameBtn?.addEventListener("click", () => {
     toast("At least one player required.");
     return;
   }
-    if (hostInGame) return;
-    hostInGame = true;
+  if (hostInGame) return;
+  hostInGame = true;
 
+  // 1) Host chooses words (use prompt for now; we can prettify later with showModal)
+  const realWord = (prompt("Real word (everyone except imposter):", "park") || "").trim();
+  const imposterWord = (prompt("Imposter word (similar but different):", "beach") || "").trim();
+
+  if (!realWord || !imposterWord) {
+    toast("Words are required.");
+    hostInGame = false;
+    return;
+  }
+
+  // 2) Pick imposter from current roster
+  const names = room.players.map(p => p.name);
+  const imposterName = names[Math.floor(Math.random() * names.length)];
+
+  // 3) Build per-player assignments (host-only memory)
+  const assignments = new Map();
+  for (const n of names) {
+    const isImp = n === imposterName;
+    assignments.set(n, { imposter: isImp, word: isImp ? imposterWord : realWord });
+  }
+  gameState = { realWord, imposterWord, imposterName, assignments };
+
+  // 4) Mark started (public-only)
   room.started = true;
   saveRoom();
 
-  // Tell all connected players to move to /game and seed their sessionStorage
-  broadcast({ type: "start", session: room });
+  // 5) Public start message to connected players
+  broadcast({ type: "start", session: toPublicSession() });
 
-  // Swap UI in-place so WebRTC objects stay alive
-    (async () => {
+  // 6) Private assignments to connected players
+  for (const entry of pending.values()) {
+    if (!entry?.name) continue;           // entry.name is set when join code is accepted
+    sendAssignToEntry(entry, entry.name);
+  }
+
+  // 7) Swap UI (your existing code)
+  (async () => {
     try {
-        const isMobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
-        const gameFile = isMobileUA ? "../game/mobile.html" : "../game/desktop.html";
-
-        await swapPanelFrom(gameFile);
-
-        // Now that game DOM exists, wire game UI using the SAME room/pending/broadcast
-        initHostGameUI();
+      const isMobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+      const gameFile = isMobileUA ? "../game/mobile.html" : "../game/desktop.html";
+      await swapPanelFrom(gameFile);
+      initHostGameUI();
+      // show host's own assignment in host UI
+      showMyAssignmentInGameUI(assignments.get(/* host name */ room.hostName || "Host"));
     } catch (e) {
-        console.error(e);
-        toast("Failed to load game UI.");
+      console.error(e);
+      toast("Failed to load game UI.");
     }
-    })();
+  })();
 });
 
 function initHostGameUI() {
@@ -352,6 +420,20 @@ function initHostGameUI() {
 
   
   renderGameRosterIfPresent();
+  // If we already have gameState and hostName, show host assignment
+    if (gameState && room.hostName) {
+    applyAssignmentToUI(gameState.assignments.get(room.hostName));
+    }
+
+  function applyAssignmentToUI(a) {
+    const wordText = document.getElementById("wordText");
+    const imposterNotice = document.getElementById("imposterNotice");
+
+    if (wordText) wordText.textContent = a?.word ? `Your word: ${a.word}` : "";
+    if (imposterNotice) {
+        imposterNotice.style.display = a?.imposter ? "" : "none";
+    }
+  }
 
   function appendChatLine(who, text) {
     if (!chatLog) return;

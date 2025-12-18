@@ -122,6 +122,22 @@ genBtn?.addEventListener("click", async () => {
             })();
             return;
             }
+
+            if (data?.type === "assign") {
+                const wordText = document.getElementById("wordText");
+                const imposterNotice = document.getElementById("imposterNotice");
+
+                if (wordText) wordText.textContent = data.word ? `Your word: ${data.word}` : "";
+                if (imposterNotice) {
+                    imposterNotice.style.display = data.imposter ? "" : "none";
+                }
+
+                // Optional: persist so a refresh can still show the word (not secure, but convenient)
+                sessionStorage.setItem("imposter:word", data.word || "");
+                sessionStorage.setItem("imposter:imposter", data.imposter ? "1" : "0");
+
+                return;
+            }
         } catch {
             // ignore non-json for now
         }
