@@ -83,16 +83,30 @@ genBtn?.addEventListener("click", async () => {
     };
 
     dc.onmessage = (msg) => {
-      // Host sends {"type":"connected"} immediately on open.
-      try {
-        const data = JSON.parse(msg.data);
-        if (data?.type === "connected") {
-          toast("Connected! You’re in.");
-          if (waitingEl) waitingEl.textContent = "Connected. Waiting for host to start…";
+        try {
+            const data = JSON.parse(msg.data);
+
+            if (data?.type === "connected") {
+            toast("Connected! You’re in.");
+            if (waitingEl) waitingEl.textContent = "Connected. Waiting for host to start…";
+            return;
+            }
+
+            if (data?.type === "start") {
+            // Seed local sessionStorage so game.js doesn't reject the player
+            const session = data.session || {};
+            session.started = true;
+
+            sessionStorage.setItem("imposter:session", JSON.stringify(session));
+            sessionStorage.setItem("imposter:role", "player");
+
+            // Go to game
+            location.href = "../game/";
+            return;
+            }
+        } catch {
+            // ignore non-json for now
         }
-      } catch {
-        // ignore non-json for now
-      }
     };
   };
 

@@ -87,6 +87,14 @@ function basePath() {
 
 // Pending invites must live in memory in THIS TAB.
 const pending = new Map(); // inviteId -> { pc, dc, used, createdAt, name? }
+function broadcast(obj) {
+  const msg = JSON.stringify(obj);
+  for (const entry of pending.values()) {
+    try {
+      if (entry?.dc?.readyState === "open") entry.dc.send(msg);
+    } catch {}
+  }
+}
 
 function render() {
   if (lobbyInfoEl) {
@@ -261,6 +269,10 @@ startGameBtn?.addEventListener("click", () => {
   room.started = true;
   saveRoom();
 
+  // Tell all connected players to move to /game and seed their sessionStorage
+  broadcast({ type: "start", session: room });
+
+  // Then move the host
   location.href = "../game/";
 });
 
