@@ -12,6 +12,7 @@ mountBackground();
 
 // Existing lobby UI
 const lobbyInfoEl = document.getElementById("lobbyInfo");
+if (!lobbyInfoEl) return;
 const joinPasteEl = document.getElementById("joinPaste");
 const addBtn = document.getElementById("addBtn");
 const pasteErrEl = document.getElementById("pasteErr");
@@ -31,13 +32,9 @@ let hostInGame = false;
 // ---- Host-only gate ----
 const role = sessionStorage.getItem("imposter:role");
 if (role !== "host") {
-  document.body.innerHTML = `
-    <main style="padding:24px;font-family:system-ui">
-      <h1>Lobby is host-only</h1>
-      <p>The host controls the lobby. To join, use the invite link the host sent you.</p>
-    </main>
-  `;
-  throw new Error("Not host");
+  // If lobby panel isn't even present, silently do nothing
+  // (Option A: this file gets loaded everywhere)
+  return;
 }
 
 // ---- Load session + passphrase ----
@@ -48,15 +45,7 @@ try {
   room = null;
 }
 
-if (!room) {
-  document.body.innerHTML = `
-    <main style="padding:24px;font-family:system-ui">
-      <h1>Lobby expired</h1>
-      <p>This session is no longer active.</p>
-    </main>
-  `;
-  throw new Error("No active lobby session");
-}
+if (!room) return;
 
 const pass = sessionStorage.getItem("imposter:pass") || "";
 if (!pass) {
@@ -93,6 +82,17 @@ const pending = new Map(); // inviteId -> { pc, dc, used, createdAt, name? }
 
 // Host-only, in-memory game state (DO NOT store in room/sessionStorage)
 let gameState = null; 
+let hostState = null;
+// {
+//   phase: "lobby" | "playing" | "voting",
+//   order: string[],
+//   turnIndex: number,
+//   turnName: string,
+//   muted: Record<string, boolean>,
+//   kicked: Record<string, boolean>,
+//   votes: { skip: Record<string, boolean>, startVoting: Record<string, boolean> },
+//   chat: Array<{from:string,text:string,t:number}>,
+// }
 // { realWord, imposterWord, imposterName, assignments: Map(name -> {word, imposter}) }
 
 function toPublicSession() {
@@ -101,9 +101,109 @@ function toPublicSession() {
     sessionId: room.sessionId,
     createdAt: room.createdAt,
     max: room.max,
+    hostName: room.hostName,
     players: room.players,
     started: true,
   };
+}
+
+function publicState() {
+  if (!hostState) return null;
+  return {
+    phase: hostState.phase,
+    order: hostState.order,
+    turnIndex: hostState.turnIndex,
+    turnName: hostState.turnName,
+    muted: hostState.muted,
+    kicked: hostState.kicked,
+    voteCounts: {
+      skip: Object.keys(hostState.votes.skip).length,
+      startVoting: Object.keys(hostState.votes.startVoting).length,
+      needed: Math.max(1, Math.ceil(hostState.order.length / 2)),
+    },
+    chat: hostState.chat.slice(-80),
+  };
+}
+
+function handleClientMsg(from, data) {
+  if (!hostState) return;
+
+  // If host supermuted them, ignore chat/votes/actions that shouldn't count
+  if (hostState.muted[from] && data?.type === "chat") return;
+
+  if (data?.type === "chat") {
+    const text = String(data.text || "").trim();
+    if (!text) return;
+    const line = { from, text, t: Date.now() };
+    hostState.chat.push(line);
+    // Relay to everyone (including sender is fine; game.js can dedupe if desired)
+    broadcast({ type: "chat", ...line });
+    return;
+  }
+
+  if (data?.type === "vote") {
+    const kind = data.kind;
+    if (kind === "skip") {
+      hostState.votes.skip[from] = true;
+      const needed = Math.max(1, Math.ceil(hostState.order.length / 2));
+      if (Object.keys(hostState.votes.skip).length >= needed) {
+        nextTurn();
+      } else {
+        broadcastState();
+      }
+      return;
+    }
+
+    if (kind === "startVoting") {
+      hostState.votes.startVoting[from] = true;
+      const needed = Math.max(1, Math.ceil(hostState.order.length / 2));
+      if (Object.keys(hostState.votes.startVoting).length >= needed) {
+        startVotingPhase();
+      } else {
+        broadcastState();
+      }
+      return;
+    }
+  }
+
+  if (data?.type === "endTurn") {
+    // Only current turn player can end (or host could allow override later)
+    if (from === hostState.turnName) nextTurn();
+    return;
+  }
+}
+
+function broadcastState() {
+  const state = publicState();
+  if (!state) return;
+  broadcast({ type: "state", state });
+}
+
+function nextTurn() {
+  if (!hostState) return;
+  const alive = hostState.order.filter(n => !hostState.kicked[n]);
+  hostState.order = alive;
+  if (hostState.order.length === 0) return;
+
+  hostState.turnIndex = (hostState.turnIndex + 1) % hostState.order.length;
+  hostState.turnName = hostState.order[hostState.turnIndex];
+
+  // reset per-turn votes
+  hostState.votes.skip = {};
+  broadcastState();
+}
+
+function startVotingPhase() {
+  if (!hostState) return;
+  hostState.phase = "voting";
+  broadcastState();
+}
+
+function endVotingPhase() {
+  if (!hostState) return;
+  hostState.phase = "playing";
+  hostState.votes.startVoting = {};
+  broadcastState();
 }
 
 function sendToEntry(entry, obj) {
@@ -137,6 +237,19 @@ function broadcast(obj) {
       if (entry?.dc?.readyState === "open") entry.dc.send(msg);
     } catch {}
   }
+}
+
+function entryByName(name) {
+  for (const entry of pending.values()) {
+    if (entry?.name === name) return entry;
+  }
+  return null;
+}
+
+function sendToName(name, obj) {
+  const entry = entryByName(name);
+  if (!entry) return;
+  sendToEntry(entry, obj);
 }
 
 function render() {
@@ -187,8 +300,9 @@ inviteBtn?.addEventListener("click", async () => {
     };
 
     dc.onmessage = (msg) => {
-      // Later: gameplay messages like endTurn, etc.
-      console.log("DC msg:", msg.data);
+        // before the join code is accepted, we don't know who "from" is
+        // you can ignore messages here or log them
+        // console.log("Pre-name msg:", msg.data);
     };
 
     const offer = await pc.createOffer();
@@ -281,6 +395,11 @@ addBtn?.addEventListener("click", async () => {
   // Reserve seat + prevent replay
   entry.used = true;
   entry.name = name;
+  entry.dc.onmessage = (msg) => {
+    let data;
+    try { data = JSON.parse(msg.data); } catch { return; }
+    handleClientMsg(name, data);
+    };
 
   room.usedJoinCodes.push(raw);
   room.connectedNames.push(name);
@@ -314,7 +433,7 @@ addBtn?.addEventListener("click", async () => {
 
     // 🔥 Sticky start: if host already started the game, push start now
     if (room.started) {
-        try { entry.dc.send(JSON.stringify({ type: "start", session: room })); } catch {}
+        try { entry.dc.send(JSON.stringify({ type: "start", session: toPublicSession() })); } catch {}
     }
     };
 
@@ -338,8 +457,8 @@ addBtn?.addEventListener("click", async () => {
 
 // ---- Start game ----
 startGameBtn?.addEventListener("click", () => {
-  if (room.players.length < 1) {
-    toast("At least one player required.");
+  if (room.players.length < 2) {
+    toast("Need at least 1 player besides the host.");
     return;
   }
   if (hostInGame) return;
@@ -366,6 +485,21 @@ startGameBtn?.addEventListener("click", () => {
     assignments.set(n, { imposter: isImp, word: isImp ? imposterWord : realWord });
   }
   gameState = { realWord, imposterWord, imposterName, assignments };
+  hostState = {
+    phase: "playing",
+    order: names.slice(),
+    turnIndex: 0,
+    turnName: names[0],
+    muted: {},
+    kicked: {},
+    votes: { skip: {}, startVoting: {} },
+    chat: [],
+  };
+
+  // Persist host assignment so refresh still shows it in game.js
+    const mine = assignments.get(room.hostName);
+    sessionStorage.setItem("imposter:word", mine?.word || "");
+    sessionStorage.setItem("imposter:imposter", mine?.imposter ? "1" : "0");
 
   // 4) Mark started (public-only)
   room.started = true;
@@ -373,6 +507,7 @@ startGameBtn?.addEventListener("click", () => {
 
   // 5) Public start message to connected players
   broadcast({ type: "start", session: toPublicSession() });
+  broadcastState();
 
   // 6) Private assignments to connected players
   for (const entry of pending.values()) {
@@ -380,15 +515,88 @@ startGameBtn?.addEventListener("click", () => {
     sendAssignToEntry(entry, entry.name);
   }
 
+  window.imposterNet = {
+    role: "host",
+    broadcast,
+    sendToName,
+    getRoom: () => room,
+    getState: () => hostState,
+    hostAction: (action) => {
+        // action: {type:"kick"|"supermute"|"forceSkip"|"spin"|"startVoting"|"endVoting", target?}
+        if (!hostState) return;
+
+        if (action.type === "hostChat") {
+            const text = String(action.text || "").trim();
+            if (!text) return;
+            const line = { from: room.hostName || "Host", text, t: Date.now() };
+            hostState.chat.push(line);
+            broadcast({ type: "chat", ...line });
+            broadcastState();
+            return;
+        }
+
+        if (action.type === "supermute" && action.target) {
+        hostState.muted[action.target] = !hostState.muted[action.target];
+        broadcastState();
+        return;
+        }
+
+        if (action.type === "kick" && action.target) {
+        hostState.kicked[action.target] = true;
+
+        // tell them then effectively drop them (we can't truly "disconnect" cleanly yet without pc close)
+        sendToName(action.target, { type: "kicked", reason: "Removed by host." });
+
+        // remove from roster/order and advance if needed
+        const wasTurn = hostState.turnName === action.target;
+        hostState.order = hostState.order.filter(n => n !== action.target);
+        if (hostState.turnIndex >= hostState.order.length) hostState.turnIndex = 0;
+        hostState.turnName = hostState.order[hostState.turnIndex] || "";
+
+        if (wasTurn) nextTurn();
+        broadcastState();
+        return;
+        }
+
+        if (action.type === "forceSkip") {
+        nextTurn();
+        return;
+        }
+
+        if (action.type === "startVoting") {
+        startVotingPhase();
+        return;
+        }
+
+        if (action.type === "endVoting") {
+        endVotingPhase();
+        return;
+        }
+
+        if (action.type === "spin") {
+        // pick first player randomly
+        const order = room.players.map(p => p.name).filter(Boolean);
+        hostState.order = order;
+        hostState.phase = "playing";
+        hostState.turnIndex = Math.floor(Math.random() * order.length);
+        hostState.turnName = order[hostState.turnIndex];
+        hostState.votes.skip = {};
+        hostState.votes.startVoting = {};
+
+        broadcast({ type: "spin", landedName: hostState.turnName, t: Date.now() });
+        broadcastState();
+        return;
+        }
+    }
+    };
+
   // 7) Swap UI (your existing code)
   (async () => {
     try {
       const isMobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
       const gameFile = isMobileUA ? "../game/mobile.html" : "../game/desktop.html";
       await swapPanelFrom(gameFile);
-      initHostGameUI();
-      // show host's own assignment in host UI
-      showMyAssignmentInGameUI(assignments.get(/* host name */ room.hostName || "Host"));
+        await new Promise(r => setTimeout(r, 0));
     } catch (e) {
       console.error(e);
       toast("Failed to load game UI.");
@@ -448,10 +656,11 @@ function initHostGameUI() {
     const msg = (chatInput?.value || "").trim();
     if (!msg) return;
     chatInput.value = "";
-    appendChatLine("Host", msg);
 
-    // later: broadcast real chat
-    // broadcast({ type:"chat", from:"Host", text: msg });
+    // Send through hostState so players receive it too
+    window.imposterNet?.hostAction?.({ type: "hostChat", text: msg });
+    // Update host UI immediately
+    window.imposterNet?.getState && window.imposterNet.getState();
   });
 
   backToLobbyBtn?.addEventListener("click", async () => {

@@ -13,6 +13,8 @@ mountBackground();
 const expired = document.getElementById("expired");
 const joinForm = document.getElementById("joinForm");
 
+if (!joinForm) return;
+
 const passEl = document.getElementById("pass");
 const nameEl = document.getElementById("name");
 const genBtn = document.getElementById("genBtn");
@@ -78,6 +80,7 @@ genBtn?.addEventListener("click", async () => {
     const dc = e.channel;
 
     dc.onopen = () => {
+        window.imposterNet = { role:"player", dc };
       // Channel open may happen before host sends its confirmation message.
       toast("Handshake complete. Waiting for host…");
       if (waitingEl) waitingEl.textContent = "Handshake complete. Waiting for host…";
@@ -87,7 +90,10 @@ genBtn?.addEventListener("click", async () => {
     dc.onmessage = (msg) => {
         try {
             const data = JSON.parse(msg.data);
-
+            // Forward other message types to game layer if present
+            if (window.imposterNet?.role === "player" && typeof window.imposterNet.onMsg === "function") {
+                window.imposterNet.onMsg(data);
+            }
             if (data?.type === "connected") {
             toast("Connected! You’re in.");
             if (waitingEl) waitingEl.textContent = "Connected. Waiting for host to start…";
@@ -109,6 +115,7 @@ genBtn?.addEventListener("click", async () => {
                 const gameFile = isMobileUA ? "../game/mobile.html" : "../game/desktop.html";
 
                 await swapPanelFrom(gameFile);
+                await new Promise(r => setTimeout(r, 0));
 
                 // Seed session so your game UI can render roster if you want
                 sessionStorage.setItem("imposter:session", JSON.stringify(session));

@@ -6,9 +6,12 @@ import { toast } from "../assets/ui.js";
 mountBackground();
 
 const passEl = document.getElementById("pass");
+const hostNameEl = document.getElementById("hostName"); // <-- ADD
 const maxEl = document.getElementById("max");
 
 const createBtn = document.getElementById("createBtn");
+if (!createBtn) return;
+
 const resetBtn = document.getElementById("resetBtn");
 
 const errEl = document.getElementById("err");
@@ -23,10 +26,13 @@ function persistRoom(room) {
     sessionId: room.sessionId,
     createdAt: room.createdAt,
     max: room.max,
+
+    hostName: room.hostName, // <-- ADD (otherwise it gets dropped)
+
     players: room.players ?? [],
     usedJoinCodes: room.usedJoinCodes ?? [],
     connectedNames: room.connectedNames ?? [],
-    started: false,
+    started: room.started ?? false, // tiny improvement; keeps if already true
   };
   sessionStorage.setItem("imposter:session", JSON.stringify(safe));
 }
@@ -42,20 +48,31 @@ createBtn?.addEventListener("click", () => {
   setErr("");
 
   const pass = (passEl?.value || "").trim();
+  const hostName = (hostNameEl?.value || "").trim(); // <-- ADD
   const max = Number(maxEl?.value);
 
   if (!pass) return setErr("Room passphrase is required.");
+  if (!hostName) return setErr("Host name is required."); // <-- ADD
   if (!Number.isFinite(max) || max < 1 || max > 15) {
     return setErr("Max room size must be between 1 and 15.");
   }
+
+  // Host counts toward max, so max must allow at least 1 (the host).
+  // Your existing min=1 already enforces this.
 
   const room = {
     sessionId: crypto.randomUUID(),
     createdAt: Date.now(),
     max,
-    players: [],
+
+    hostName, // <-- ADD
+
+    // Host is a player immediately:
+    players: [{ name: hostName, status: "connected" }], // <-- CHANGE
+
     usedJoinCodes: [],
-    connectedNames: [],
+    connectedNames: [hostName], // <-- CHANGE
+    started: false,
   };
 
   // Host identity + passphrase are ephemeral (tab/session only)

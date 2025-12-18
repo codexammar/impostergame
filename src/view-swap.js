@@ -14,4 +14,5 @@ export async function swapPanelFrom(url) {
 
   // Replace only the contents, keep the existing panel node (and background etc.)
   currentPanel.innerHTML = incomingPanel.innerHTML;
+  window.dispatchEvent(new Event("imposter:panelSwap"));
 }

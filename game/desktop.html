@@ -24,6 +24,15 @@
       <div style="display:grid; grid-template-columns: 1fr 1.2fr; gap: 16px;">
         <!-- Left: Roster + Controls -->
         <section>
+            <div style="margin:10px 0 12px;">
+            <div class="actions" style="justify-content:flex-start; margin-top:0;">
+                <button id="spinBtn" class="btn">Spin Wheel</button>
+                <button id="endTurnBtn" class="btn">End Turn</button>
+            </div>
+            <p class="note" style="text-align:left; margin-top:8px;">
+                Spin decides who goes first. Turn highlight shows who speaks now.
+            </p>
+            </div>
           <h2 style="margin:0 0 8px; font-size:1.15rem;">Players</h2>
           <ul id="roster" style="margin:0; padding-left:18px;"></ul>
 
@@ -81,7 +90,5 @@
       </div>
     </div>
   </div>
-
-  <script type="module" src="../src/game.js"></script>
 </body>
 </html>
