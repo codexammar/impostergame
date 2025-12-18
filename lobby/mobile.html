@@ -13,6 +13,21 @@
       <h1 class="title">Lobby</h1>
       <p id="lobbyInfo" class="note">Loading…</p>
 
+      <hr style="margin:14px 0; border:0; border-top:1px solid rgba(255,255,255,0.12);" />
+
+      <div class="actions" style="margin-top:10px;">
+        <button id="inviteBtn" class="btn">Invite</button>
+        <button id="copyInviteBtn" class="btn hidden">Copy</button>
+      </div>
+
+      <div id="inviteBlock" class="hidden" style="margin-top:10px;">
+        <textarea id="inviteMsg" rows="6" readonly></textarea>
+      </div>
+
+      <div id="inviteErr" class="note" style="color:#ff9aa2; margin-top:8px;"></div>
+
+      <hr style="margin:14px 0; border:0; border-top:1px solid rgba(255,255,255,0.12);" />
+
       <textarea id="joinPaste" rows="4" placeholder="Paste join code..."></textarea>
 
       <div class="actions" style="margin-top:10px;">

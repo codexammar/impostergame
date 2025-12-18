@@ -15,6 +15,26 @@
 
       <hr style="margin:18px 0; border:0; border-top:1px solid rgba(255,255,255,0.12);" />
 
+      <h2 style="margin:0; font-size:1.15rem;">Invites</h2>
+      <p class="note" style="text-align:left;">
+        Generate a single-use invite link for one player, send it via Discord/Teams/etc.
+        Each player needs their own link.
+      </p>
+
+      <div class="actions" style="margin-top:12px;">
+        <button id="inviteBtn" class="btn">Generate Invite</button>
+        <button id="copyInviteBtn" class="btn hidden">Copy Invite Message</button>
+      </div>
+
+      <div id="inviteBlock" class="hidden" style="margin-top:12px;">
+        <p class="note">Share this exact message with the player:</p>
+        <textarea id="inviteMsg" rows="5" readonly></textarea>
+      </div>
+
+      <div id="inviteErr" class="note" style="color:#ff9aa2; text-align:left; margin-top:10px;"></div>
+
+      <hr style="margin:18px 0; border:0; border-top:1px solid rgba(255,255,255,0.12);" />
+
       <h2 style="margin:0; font-size:1.15rem;">Add Participants</h2>
       <p class="note" style="text-align:left;">
         Paste join codes one at a time. Players connect in paste order.
