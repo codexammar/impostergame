@@ -1,7 +1,7 @@
 // src/host.js
 
 import { mountBackground } from "../assets/bg.js";
-import { toast, showModal } from "../assets/ui.js";
+import { toast } from "../assets/ui.js";
 
 import { encryptJson, decryptJson, randomB64Url } from "./crypto.js";
 import { makePeerConnection, waitForIceComplete } from "./webrtc-common.js";
@@ -29,11 +29,11 @@ const playersEl = document.getElementById("players");
 
 function setErr(msg) { if (errEl) errEl.textContent = msg || ""; }
 function setPasteErr(msg) { if (pasteErrEl) pasteErrEl.textContent = msg || ""; }
+
 function hide(el) { el?.classList.add("hidden"); }
 function show(el) { el?.classList.remove("hidden"); }
 
 function basePath() {
-  // /impostergame/host/desktop.html -> /impostergame/
   return location.pathname.replace(/\/host\/(desktop\.html|mobile\.html)$/, "/");
 }
 
@@ -42,11 +42,9 @@ function roomForStorage(r) {
     sessionId: r.sessionId,
     createdAt: r.createdAt,
     max: r.max,
-    ttlMs: r.ttlMs,
     players: r.players,
     usedJoinCodes: [...r.usedJoinCodes],
     connectedNames: [...r.connectedNames],
-    // We intentionally do NOT store pending RTCPeerConnections in sessionStorage.
   };
 }
 
@@ -55,12 +53,11 @@ function persistRoom() {
   sessionStorage.setItem("imposter:session", JSON.stringify(roomForStorage(room)));
 }
 
-// Ephemeral runtime state
+// Ephemeral room state
 let room = null;
 
-// Pending invites that host generated but haven’t been answered yet.
-// inviteId -> { pc, dc, createdAt, used:false }
-const pending = new Map();
+// Pending invites (must remain in memory; do not refresh/navigate)
+const pending = new Map(); // inviteId -> { pc, dc, used, createdAt, name? }
 
 function renderPlayers() {
   if (!playersEl) return;
@@ -108,7 +105,6 @@ createBtn?.addEventListener("click", () => {
   room = {
     sessionId: crypto.randomUUID(),
     createdAt: Date.now(),
-    ttlMs: 30 * 60 * 1000, // 30 minutes
     max,
     usedJoinCodes: new Set(),
     connectedNames: new Set(),
@@ -124,7 +120,7 @@ createBtn?.addEventListener("click", () => {
   renderPlayers();
   persistRoom();
   sessionStorage.setItem("imposter:role", "host");
-  toast("Room created. Generate an invite for each player.");
+  toast("Room created. Generate one invite per player.");
 });
 
 inviteBtn?.addEventListener("click", async () => {
@@ -138,19 +134,19 @@ inviteBtn?.addEventListener("click", async () => {
     return setErr("Room is full.");
   }
 
-  // Create a fresh per-player invite: PC + DC + Offer
+  // Fresh per-player invite (single-use)
   const inviteId = randomB64Url(10);
-  const pc = makePeerConnection();
 
-  // Host creates DataChannel (since host is offerer)
+  const pc = makePeerConnection();
   const dc = pc.createDataChannel("game", { ordered: true });
 
   dc.onopen = () => {
-    toast("A player connected.");
+    // We'll mark connected when we know the player's name (after paste)
+    toast("DataChannel opened.");
   };
 
   dc.onmessage = (msg) => {
-    // Later: gameplay messages (endTurn, etc.)
+    // later: gameplay messages
     console.log("DC msg:", msg.data);
   };
 
@@ -161,14 +157,14 @@ inviteBtn?.addEventListener("click", async () => {
   const offerSdp = pc.localDescription?.sdp;
   if (!offerSdp) return setErr("Failed to create offer.");
 
-  pending.set(inviteId, { pc, dc, createdAt: Date.now(), used: false });
+  pending.set(inviteId, { pc, dc, used: false, createdAt: Date.now() });
 
   const invitePayload = {
     v: 1,
     sessionId: room.sessionId,
     inviteId,
     createdAt: Date.now(),
-    ttlMs: 10 * 60 * 1000, // 10 min per invite link
+    ttlMs: 10 * 60 * 1000, // 10 minutes per invite link
     max: room.max,
     offer: { type: "offer", sdp: offerSdp },
   };
@@ -187,7 +183,7 @@ Here’s your link: ${joinUrl}
   show(inviteBlock);
   show(copyInviteBtn);
 
-  toast("Invite generated (single-use). Send it to one player.");
+  toast("Invite generated (single-use). Send to one player.");
 });
 
 copyInviteBtn?.addEventListener("click", async () => {
@@ -225,9 +221,9 @@ addBtn?.addEventListener("click", async () => {
   const inviteId = String(payload.inviteId || "").trim();
   if (!inviteId) return setPasteErr("Join code missing invite id.");
 
-  const pendingInvite = pending.get(inviteId);
-  if (!pendingInvite) return setPasteErr("That invite is unknown/expired. Generate a new invite.");
-  if (pendingInvite.used) return setPasteErr("That invite was already used. Generate a new invite.");
+  const entry = pending.get(inviteId);
+  if (!entry) return setPasteErr("That invite is unknown/expired. Generate a new invite.");
+  if (entry.used) return setPasteErr("That invite was already used. Generate a new invite.");
 
   const name = String(payload.name || "").trim();
   if (!name) return setPasteErr("Join code missing player name.");
@@ -236,31 +232,27 @@ addBtn?.addEventListener("click", async () => {
   const ans = payload.answer;
   if (!ans?.sdp) return setPasteErr("Join code missing answer SDP.");
 
-  // Mark used so it can't be replayed
-  pendingInvite.used = true;
+  // Reserve seat + prevent replay
+  entry.used = true;
+  entry.name = name;
+
   room.usedJoinCodes.add(raw);
   room.connectedNames.add(name);
-
-  // Add player as "connecting"; DC onopen will flip to connected soon
   room.players.push({ name, status: "connecting..." });
+
   renderPlayers();
   persistRoom();
 
   try {
-    await pendingInvite.pc.setRemoteDescription({ type: "answer", sdp: ans.sdp });
+    await entry.pc.setRemoteDescription({ type: "answer", sdp: ans.sdp });
 
-    // When DC is open, set status to connected
-    pendingInvite.dc.onopen = () => {
+    entry.dc.onopen = () => {
       const p = room.players.find(x => x.name === name);
       if (p) p.status = "connected";
       renderPlayers();
       persistRoom();
       toast(`${name} connected.`);
     };
-
-    // Store DC reference for gameplay later
-    // For now we just keep it on the pending entry.
-    pendingInvite.name = name;
 
     joinPasteEl.value = "";
     toast(`Accepted ${name}. Waiting for channel…`);

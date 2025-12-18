@@ -59,16 +59,14 @@ genBtn?.addEventListener("click", async () => {
     return setErr("Invite expired.");
   }
 
-  // Create PC, accept host offer, generate answer
   pc = makePeerConnection();
 
   pc.ondatachannel = (e) => {
     const dc = e.channel;
     dc.onopen = () => {
-      toast("Connected.");
+      toast("Connected to host.");
       sessionStorage.setItem("imposter:role", "player");
-      // Later: game page will be driven by host messages via DC.
-      // For now, player can stay on join page or navigate manually.
+      // When we wire gameplay, host will drive navigation/state.
     };
     dc.onmessage = (msg) => console.log("DC:", msg.data);
   };
@@ -92,7 +90,6 @@ genBtn?.addEventListener("click", async () => {
       t: now,
     };
 
-    // Encrypt answer with same passphrase
     const joinCode = await encryptJson(pass, joinPayload);
 
     codeEl.value = joinCode;
