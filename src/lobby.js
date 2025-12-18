@@ -6,6 +6,7 @@ import { toast } from "../assets/ui.js";
 import { encryptJson, decryptJson, randomB64Url } from "./crypto.js";
 import { makePeerConnection, waitForIceComplete } from "./webrtc-common.js";
 import { compressStringToB64u, decompressStringFromB64u } from "./codec.js";
+import { swapPanelFrom } from "./view-swap.js";
 
 mountBackground();
 
@@ -24,6 +25,8 @@ const copyInviteBtn = document.getElementById("copyInviteBtn");
 const inviteBlock = document.getElementById("inviteBlock");
 const inviteMsgEl = document.getElementById("inviteMsg");
 const inviteErrEl = document.getElementById("inviteErr");
+
+let hostInGame = false;
 
 // ---- Host-only gate ----
 const role = sessionStorage.getItem("imposter:role");
@@ -45,7 +48,7 @@ try {
   room = null;
 }
 
-if (!room || room.started) {
+if (!room) {
   document.body.innerHTML = `
     <main style="padding:24px;font-family:system-ui">
       <h1>Lobby expired</h1>
@@ -112,6 +115,18 @@ function render() {
 }
 
 render();
+
+function renderGameRosterIfPresent() {
+  const roster = document.getElementById("roster");
+  if (!roster) return;
+
+  roster.innerHTML = "";
+  for (const p of room.players) {
+    const li = document.createElement("li");
+    li.textContent = p.status ? `${p.name} — ${p.status}` : p.name;
+    roster.appendChild(li);
+  }
+}
 
 // ---- Generate per-player invite (Offer in link hash) ----
 inviteBtn?.addEventListener("click", async () => {
@@ -238,14 +253,36 @@ addBtn?.addEventListener("click", async () => {
     const answerSdp = await decompressStringFromB64u(ans.sdpPacked);
     await entry.pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
 
-    entry.dc.onopen = () => {
-      try { entry.dc.send(JSON.stringify({ type: "connected" })); } catch {}
-      const p = room.players.find(x => x.name === name);
-      if (p) p.status = "connected";
-      saveRoom();
-      render();
-      toast(`${name} connected.`);
+    const markConnected = () => {
+        const p = room.players.find(x => x.name === name);
+        if (p) p.status = "connected";
+
+        saveRoom();
+        render();
+
+        if (room.started) renderGameRosterIfPresent();
+
+        toast(`${name} connected.`);
     };
+
+    const onOpen = () => {
+    // Let joiner update UI
+    try { entry.dc.send(JSON.stringify({ type: "connected" })); } catch {}
+
+    // Mark host UI
+    markConnected();
+
+    // 🔥 Sticky start: if host already started the game, push start now
+    if (room.started) {
+        try { entry.dc.send(JSON.stringify({ type: "start", session: room })); } catch {}
+    }
+    };
+
+    // Fire when it opens later
+    entry.dc.addEventListener("open", onOpen);
+
+    // Or if it's already open right now, run immediately
+    if (entry.dc.readyState === "open") onOpen();
 
     joinPasteEl.value = "";
     toast(`Accepted ${name}. Waiting for channel…`);
@@ -265,6 +302,8 @@ startGameBtn?.addEventListener("click", () => {
     toast("At least one player required.");
     return;
   }
+    if (hostInGame) return;
+    hostInGame = true;
 
   room.started = true;
   saveRoom();
@@ -272,15 +311,91 @@ startGameBtn?.addEventListener("click", () => {
   // Tell all connected players to move to /game and seed their sessionStorage
   broadcast({ type: "start", session: room });
 
-  // Then move the host
-  location.href = "../game/";
+  // Swap UI in-place so WebRTC objects stay alive
+    (async () => {
+    try {
+        const isMobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+        const gameFile = isMobileUA ? "../game/mobile.html" : "../game/desktop.html";
+
+        await swapPanelFrom(gameFile);
+
+        // Now that game DOM exists, wire game UI using the SAME room/pending/broadcast
+        initHostGameUI();
+    } catch (e) {
+        console.error(e);
+        toast("Failed to load game UI.");
+    }
+    })();
 });
 
-// ---- End session ----
-endSessionBtn?.addEventListener("click", () => {
-  sessionStorage.removeItem("imposter:session");
-  sessionStorage.removeItem("imposter:role");
-  sessionStorage.removeItem("imposter:pass");
-  toast("Session ended.");
-  location.href = "../";
-});
+function initHostGameUI() {
+  const gameInfo = document.getElementById("gameInfo");
+  const roster = document.getElementById("roster");
+
+  const chatLog = document.getElementById("chatLog");
+  const chatInput = document.getElementById("chatInput");
+  const sendBtn = document.getElementById("sendBtn");
+
+  const backToLobbyBtn = document.getElementById("backToLobbyBtn");
+  const endSessionBtn = document.getElementById("endSessionBtn"); // game view uses this id
+
+  const hostControls = document.getElementById("hostControls");
+  const playerControls = document.getElementById("playerControls");
+
+  // Host view: host controls on
+  if (hostControls) hostControls.style.display = "";
+  if (playerControls) playerControls.style.display = "";
+
+  if (gameInfo) {
+    gameInfo.textContent = `You are hosting • Players: ${room.players.length} / ${room.max}`;
+  }
+
+  
+  renderGameRosterIfPresent();
+
+  function appendChatLine(who, text) {
+    if (!chatLog) return;
+    const line = document.createElement("div");
+    line.style.margin = "6px 0";
+    line.innerHTML = `<strong>${escapeHtml(who)}:</strong> ${escapeHtml(text)}`;
+    chatLog.appendChild(line);
+    chatLog.scrollTop = chatLog.scrollHeight;
+  }
+
+  sendBtn?.addEventListener("click", () => {
+    const msg = (chatInput?.value || "").trim();
+    if (!msg) return;
+    chatInput.value = "";
+    appendChatLine("Host", msg);
+
+    // later: broadcast real chat
+    // broadcast({ type:"chat", from:"Host", text: msg });
+  });
+
+  backToLobbyBtn?.addEventListener("click", async () => {
+    // Optional: swap back to lobby UI from file
+    const isMobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+    const lobbyFile = isMobileUA ? "../lobby/mobile.html" : "../lobby/desktop.html";
+    await swapPanelFrom(lobbyFile);
+
+    // Re-bind lobby UI again (simplest is to reload the page)
+    location.reload();
+  });
+
+  endSessionBtn?.addEventListener("click", () => {
+    sessionStorage.removeItem("imposter:session");
+    sessionStorage.removeItem("imposter:role");
+    sessionStorage.removeItem("imposter:pass");
+    toast("Session ended.");
+    location.href = "../";
+  });
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}

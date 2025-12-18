@@ -6,6 +6,7 @@ import { toast } from "../assets/ui.js";
 import { decryptJson, encryptJson } from "./crypto.js";
 import { makePeerConnection, waitForIceComplete } from "./webrtc-common.js";
 import { compressStringToB64u, decompressStringFromB64u } from "./codec.js";
+import { swapPanelFrom } from "./view-swap.js";
 
 mountBackground();
 
@@ -23,6 +24,7 @@ const codeEl = document.getElementById("code");
 const waitingEl = document.getElementById("waiting");
 
 const inviteToken = (location.hash || "").slice(1);
+let started = false;
 
 let pc = null;
 
@@ -94,14 +96,30 @@ genBtn?.addEventListener("click", async () => {
 
             if (data?.type === "start") {
             // Seed local sessionStorage so game.js doesn't reject the player
-            const session = data.session || {};
+            if (started) return;
+            started = true;
+
+            const session = (data.session || {});
             session.started = true;
 
-            sessionStorage.setItem("imposter:session", JSON.stringify(session));
-            sessionStorage.setItem("imposter:role", "player");
-
             // Go to game
-            location.href = "../game/";
+            (async () => {
+            try {
+                const isMobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+                const gameFile = isMobileUA ? "../game/mobile.html" : "../game/desktop.html";
+
+                await swapPanelFrom(gameFile);
+
+                // Seed session so your game UI can render roster if you want
+                sessionStorage.setItem("imposter:session", JSON.stringify(session));
+                sessionStorage.setItem("imposter:role", "player");
+
+                initPlayerGameUI(session);
+            } catch (e) {
+                console.error(e);
+                toast("Failed to load game UI.");
+            }
+            })();
             return;
             }
         } catch {
@@ -152,3 +170,38 @@ copyBtn?.addEventListener("click", async () => {
   await navigator.clipboard.writeText(text);
   toast("Join code copied.");
 });
+
+function initPlayerGameUI(session) {
+  const gameInfo = document.getElementById("gameInfo");
+  const roster = document.getElementById("roster");
+  const hostControls = document.getElementById("hostControls");
+  const playerControls = document.getElementById("playerControls");
+  const backToLobbyBtn = document.getElementById("backToLobbyBtn");
+const endSessionBtn = document.getElementById("endSessionBtn");
+
+backToLobbyBtn?.addEventListener("click", () => {
+  // simplest: reload the original join page UI
+  location.reload();
+});
+
+endSessionBtn?.addEventListener("click", () => {
+  sessionStorage.removeItem("imposter:session");
+  sessionStorage.removeItem("imposter:role");
+  toast("Session ended.");
+  location.href = "../";
+});
+
+  if (hostControls) hostControls.style.display = "none";
+  if (playerControls) playerControls.style.display = "";
+
+  if (gameInfo) gameInfo.textContent = "Connected player • Waiting for host updates";
+
+  if (roster) {
+    roster.innerHTML = "";
+    for (const p of session.players || []) {
+      const li = document.createElement("li");
+      li.textContent = p.status ? `${p.name} — ${p.status}` : p.name;
+      roster.appendChild(li);
+    }
+  }
+}
